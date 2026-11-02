@@ -1,17 +1,22 @@
 package com.example.vrupsidedown
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.media.MediaPlayer
 import android.net.Uri
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.util.Log
 import android.util.Size
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -33,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
@@ -75,6 +81,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashLogger()
+        val crashFile = File(filesDir, "crash.txt")
+        if (crashFile.exists()) {
+            val trace = crashFile.readText()
+            crashFile.delete()
+            showCrashScreen(trace)
+            return
+        }
         setContentView(R.layout.activity_main)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
@@ -349,6 +363,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!::glView.isInitialized) return
         glView.onResume()
         try {
             player?.start()
@@ -358,6 +373,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        if (!::glView.isInitialized) return
         try {
             player?.pause()
         } catch (e: Exception) {
@@ -369,7 +385,62 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         stopCamera()
         stopPlayer()
-        cameraExecutor.shutdown()
+        if (::cameraExecutor.isInitialized) cameraExecutor.shutdown()
+    }
+
+    // ------------------------------------------------------------- diagnostic
+
+    private fun installCrashLogger() {
+        if (handlerInstalled) return
+        handlerInstalled = true
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        val file = File(applicationContext.filesDir, "crash.txt")
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                file.writeText(Log.getStackTraceString(throwable))
+            } catch (e: Exception) {
+            }
+            previous?.uncaughtException(thread, throwable)
+        }
+    }
+
+    private fun showCrashScreen(trace: String) {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val shown = trace.take(3500)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+            setBackgroundColor(Color.BLACK)
+        }
+        col.addView(TextView(this).apply {
+            text = "L'app a planté au dernier lancement. Appuie sur Copier et envoie le texte."
+            setTextColor(Color.WHITE)
+            textSize = 16f
+        })
+        col.addView(Button(this).apply {
+            text = "Copier l'erreur"
+            setOnClickListener {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("erreur", shown))
+                toast("Copié")
+            }
+        })
+        col.addView(Button(this).apply {
+            text = "Réessayer"
+            setOnClickListener { recreate() }
+        })
+        col.addView(TextView(this).apply {
+            text = shown
+            setTextColor(Color.LTGRAY)
+            textSize = 11f
+            setTextIsSelectable(true)
+        })
+        setContentView(ScrollView(this).apply { addView(col) })
+    }
+
+    companion object {
+        @Volatile
+        private var handlerInstalled = false
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
