@@ -65,8 +65,8 @@ jobs:
                   applicationId = "com.example.vrupsidedown"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 2
-                  versionName = "1.1"
+                  versionCode = 3
+                  versionName = "1.2"
               }
 
               buildTypes {
@@ -152,6 +152,59 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+
+      - name: Clé de signature stable (permet les mises à jour sans désinstaller)
+        run: |
+          mkdir -p ~/.android
+          base64 -d > ~/.android/debug.keystore <<'__KS__'
+          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
+          __KS__
 
       - name: Compiler l'APK
         run: gradle assembleDebug --no-daemon
