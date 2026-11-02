@@ -260,7 +260,7 @@ jobs:
                           surfaceTexture?.updateTexImage()
                           surfaceTexture?.getTransformMatrix(texMatrix)
                           videoReady = true
-                      } catch (_: Exception) {
+                      } catch (e: Exception) {
                       }
                   }
 
@@ -478,7 +478,7 @@ jobs:
                           videoSurface = surface
                           try {
                               player?.setSurface(surface)
-                          } catch (_: Exception) {
+                          } catch (e: Exception) {
                           }
                       }
                   }
@@ -640,7 +640,7 @@ jobs:
               private fun stopPlayer() {
                   try {
                       player?.release()
-                  } catch (_: Exception) {
+                  } catch (e: Exception) {
                   }
                   player = null
               }
@@ -743,7 +743,7 @@ jobs:
                   glView.onResume()
                   try {
                       player?.start()
-                  } catch (_: Exception) {
+                  } catch (e: Exception) {
                   }
               }
 
@@ -751,7 +751,7 @@ jobs:
                   super.onPause()
                   try {
                       player?.pause()
-                  } catch (_: Exception) {
+                  } catch (e: Exception) {
                   }
                   glView.onPause()
               }
