@@ -89,6 +89,14 @@ class MainActivity : AppCompatActivity() {
             showCrashScreen(trace)
             return
         }
+        try {
+            setupUi()
+        } catch (t: Throwable) {
+            showCrashScreen(Log.getStackTraceString(t))
+        }
+    }
+
+    private fun setupUi() {
         setContentView(R.layout.activity_main)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
@@ -96,15 +104,20 @@ class MainActivity : AppCompatActivity() {
         prefs = getSharedPreferences("vr", MODE_PRIVATE)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        renderer = StereoRenderer { surface ->
-            runOnUiThread {
-                videoSurface = surface
-                try {
-                    player?.setSurface(surface)
-                } catch (e: Exception) {
+        renderer = StereoRenderer(
+            onVideoSurface = { surface ->
+                runOnUiThread {
+                    videoSurface = surface
+                    try {
+                        player?.setSurface(surface)
+                    } catch (e: Exception) {
+                    }
                 }
+            },
+            onError = { t ->
+                runOnUiThread { showCrashScreen(Log.getStackTraceString(t)) }
             }
-        }
+        )
         renderer.distortion = prefs.getFloat("k", 0.15f)
         renderer.eyeShift = prefs.getFloat("shift", 0f)
         renderer.zoom = prefs.getFloat("zoom", 1f)
@@ -129,7 +142,7 @@ class MainActivity : AppCompatActivity() {
         glView.setOnTouchListener { _, e -> detector.onTouchEvent(e) }
 
         useCamera()
-        toast("Toucher : orientation • Appui long : réglages / import")
+        toast("v1.2 • Toucher : orientation • Appui long : réglages / import")
     }
 
     // ---------------------------------------------------------------- sources
@@ -146,6 +159,7 @@ class MainActivity : AppCompatActivity() {
     private fun startCamera() {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
+            try {
             val provider = providerFuture.get()
             cameraProvider = provider
 
@@ -173,6 +187,9 @@ class MainActivity : AppCompatActivity() {
             cameraActive = true
             provider.unbindAll()
             provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, a)
+            } catch (t: Throwable) {
+                showCrashScreen(Log.getStackTraceString(t))
+            }
         }, ContextCompat.getMainExecutor(this))
     }
 
