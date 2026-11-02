@@ -22,7 +22,10 @@ import javax.microedition.khronos.opengles.GL10
  *  - réglage d'écart entre les images, zoom
  *  - retournement : 0 = 180° (à l'envers), 1 = miroir vertical, 2 = normal
  */
-class StereoRenderer(private val onVideoSurface: (Surface) -> Unit) : GLSurfaceView.Renderer {
+class StereoRenderer(
+    private val onVideoSurface: (Surface) -> Unit,
+    private val onError: (Throwable) -> Unit
+) : GLSurfaceView.Renderer {
 
     enum class Source { BITMAP, VIDEO }
 
@@ -33,6 +36,7 @@ class StereoRenderer(private val onVideoSurface: (Surface) -> Unit) : GLSurfaceV
     @Volatile var zoom = 1f
     @Volatile var videoAspect = 16f / 9f
     @Volatile private var videoReady = false
+    @Volatile private var failed = false
 
     private val pendingBitmap = AtomicReference<Bitmap?>(null)
     private val frameAvailable = AtomicBoolean(false)
@@ -66,7 +70,22 @@ class StereoRenderer(private val onVideoSurface: (Surface) -> Unit) : GLSurfaceV
         videoReady = false
     }
 
+    private fun fail(t: Throwable) {
+        if (!failed) {
+            failed = true
+            onError(t)
+        }
+    }
+
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        try {
+            createGl()
+        } catch (t: Throwable) {
+            fail(t)
+        }
+    }
+
+    private fun createGl() {
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         progBitmap = buildProgram(false)
         progOes = buildProgram(true)
@@ -98,6 +117,15 @@ class StereoRenderer(private val onVideoSurface: (Surface) -> Unit) : GLSurfaceV
     }
 
     override fun onDrawFrame(gl: GL10?) {
+        if (failed) return
+        try {
+            draw()
+        } catch (t: Throwable) {
+            fail(t)
+        }
+    }
+
+    private fun draw() {
         GLES20.glViewport(0, 0, viewW, viewH)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
