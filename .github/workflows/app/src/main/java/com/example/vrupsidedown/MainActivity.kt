@@ -1,6 +1,11 @@
 package com.example.vrupsidedown
 
 import android.Manifest
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.Intent
+import android.hardware.camera2.CameraManager
+import android.os.Build
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -142,7 +147,7 @@ class MainActivity : AppCompatActivity() {
         glView.setOnTouchListener { _, e -> detector.onTouchEvent(e) }
 
         useCamera()
-        toast("v1.2 • Toucher : orientation • Appui long : réglages / import")
+        toast("v1.3 • Toucher : orientation • Appui long : réglages / import")
     }
 
     // ---------------------------------------------------------------- sources
@@ -461,4 +466,126 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+}
+
+
+/**
+ * Écran de démarrage de diagnostic : n'utilise ni AppCompat ni layout XML,
+ * pour fonctionner même si le reste de l'app a un problème.
+ */
+class DiagActivity : Activity() {
+
+    private lateinit var status: TextView
+    private var extra = ""
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        installLogger()
+
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+
+        col.addView(TextView(this).apply {
+            text = "VR à l'envers — diagnostic v1.3"
+            textSize = 20f
+        })
+        status = TextView(this).apply { textSize = 14f }
+        col.addView(status)
+
+        fun button(label: String, action: () -> Unit) {
+            col.addView(Button(this).apply {
+                text = label
+                setOnClickListener { action() }
+            })
+        }
+
+        button("▶  Lancer l'app VR") {
+            try {
+                startActivity(Intent(this, MainActivity::class.java))
+            } catch (e: Throwable) {
+                extra = Log.getStackTraceString(e)
+                refresh()
+            }
+        }
+        button("Demander la permission caméra") {
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
+        }
+        button("Tester OpenGL et caméras") { runTests() }
+
+        val crash = File(filesDir, "crash.txt")
+        if (crash.exists()) {
+            val shown = crash.readText().take(3500)
+            crash.delete()
+            col.addView(TextView(this).apply {
+                text = "Dernier plantage :"
+                textSize = 16f
+                setPadding(0, pad, 0, 0)
+            })
+            button("Copier l'erreur") {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("erreur", shown))
+                Toast.makeText(this, "Copié", Toast.LENGTH_SHORT).show()
+            }
+            col.addView(TextView(this).apply {
+                text = shown
+                textSize = 11f
+                setTextIsSelectable(true)
+            })
+        }
+
+        setContentView(ScrollView(this).apply { addView(col) })
+        refresh()
+    }
+
+    private fun refresh() {
+        val cam = checkSelfPermission(Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        val camText = if (cam) "accordée" else "pas encore accordée"
+        status.text = "Package : $packageName\n" +
+            "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n" +
+            "Appareil : ${Build.MANUFACTURER} ${Build.MODEL}\n" +
+            "Permission caméra : $camText\n\n" + extra
+    }
+
+    private fun runTests() {
+        val sb = StringBuilder()
+        try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            sb.append("OpenGL ES : ").append(am.deviceConfigurationInfo.glEsVersion).append("\n")
+        } catch (e: Throwable) {
+            sb.append("OpenGL : erreur ").append(e.message).append("\n")
+        }
+        try {
+            val cm = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            sb.append("Caméras : ").append(cm.cameraIdList.joinToString()).append("\n")
+        } catch (e: Throwable) {
+            sb.append("Caméras : erreur ").append(e.message).append("\n")
+        }
+        extra = sb.toString()
+        refresh()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        refresh()
+    }
+
+    private fun installLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        val file = File(applicationContext.filesDir, "crash.txt")
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                file.writeText(Log.getStackTraceString(throwable))
+            } catch (e: Exception) {
+            }
+            previous?.uncaughtException(thread, throwable)
+        }
+    }
 }
